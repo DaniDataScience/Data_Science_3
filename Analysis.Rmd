@@ -1,0 +1,713 @@
+---
+title: "analysis"
+output: html_document
+date: '2022-05-01'
+---
+
+```{r rm, include = FALSE}
+rm(list=ls())
+```
+
+```{r libs, include = FALSE}
+library(rvest)
+library(data.table)
+library(xml2)
+library(tidyverse)
+library(stringr)
+library(tidytext)
+library(ggplot2)
+library(textdata)
+```
+
+```{r data, include=FALSE}
+df <- read.csv("./df_clean.csv", row.names = 1, header= TRUE)
+```
+
+## Introduction and background
+
+During this project I tried to determine if casting Daniel Craig as James Bond was a good decision from the producers or not, what are the fan reactions, did they actually consider Craig negatively  or rather neutral or positively. To boil this down, my research question was the following:
+
+"Was Daniel Craig's public reception by the fans overall positive or negative ?"
+
+A bit of a background to the topic:
+James Bond is a typical English gentleman, who happens to be the world's best spy. His character was all about elegance, charm, and wits. Pierce Brosnan and Roger Moore were perfect examples of the character. So when the producers decided to cast Daniel Craig as the new James Bond in 2006, there was a huge backlash from fans. He was more of a typical action-move fighter character, not the elegant British gentlemen type James Bond was all about. Now, after the 5th and final James Bond with Craig has aired in 2021, it is time to evaluate his casting. Some fans really liked the way the saga developed, and became more action-oriented, and many fans accepted, or at least got used to Craig and the new character. But many strongly criticize him. My aim is to use text analysis to figure out
+
+The data, scraping and cleaning code for the whole analysis can be found here: https://github.com/DaniDataScience/Data_Science_3
+
+I did the following analysis in order to examine this question:
+
+- scraping data from imdb
+- cleaning and preparing data
+- exploratory analysis analysis
+
+## Conclusion
+
+Based on the Exploratory analysis, and Analysis 1, 2, and 3, I concluded that Craig's reviews are the negative reviews were more directed towards the movie (storytelling, plot, ect) and Craig s bond was only a secondary factor, with hime being a more controversial actoras Bond, rather than a negative one. 
+
+#### Scrapcing data from imdb
+
+I scraped the reviews for all 5 James bond movies from imdb. The code for scraping can be found in the git repo. 
+
+The biggest difficulty here was that the imdb website does not post reviews above the 10th on a separate url that can be scraped directly, rather one has to load in more and more reviews from the same url page. I needed to do some research and figured out that if I pre-load the reviews in chrome and save the webpage as html, I can use that saved html for scraping.
+
+I created a scraped dataset that contained an ID, the text of the review, the scoring (from 1 to 10) given by the reviewer, and the film (5 films in total). I scraped c.90% of all reviews per film, so had in total 8273 rows
+
+#### Cleaning and preparing data
+
+I had to do some minor data cleaning, and I also prepared the data for unstructured text analysis as much as possible:
+
+- I created a new variable to indicate if the review mentions Daniel Craig
+- I created a new variable where I extracted from the reviews that mention Craig only those sentences that talk about Daniel Craig directly or indirectly
+- I created a new variable where I extracted from the reviews that mention Craig only those sentences that do NOT talk about Daniel Craig directly or indirectly
+- I created a new variable that indicates if the review rating is more positive or more negative than the movie average
+
+## Exploratory analysis
+
+The following picture explains the structure of the total data and the part that I use. 
+
+So for each film there are a total of 300-500k ratings on imdb. Only c.1% of those who rated wrote a textual review as well. 65% of those who wrote a review mentioned Daniel Craig directly. Those reviews that mention Daniel Craig can be split into two groupes: sentences that directly  mention or refer to Daniel Craig, and sentences that do not mention him.
+
+My dataset contains the parts highlighted with blue. However, when looking at ratings in the preliminary analysis, I will look at the imdb ratings as well on an aggregate level, as this ill also give important insights.
+
+```{r , echo=FALSE, message=FALSE, warning=FALSE}
+library(kableExtra)
+knitr::include_graphics("https://raw.githubusercontent.com/DaniDataScience/Data_Science_3/main/structure.png")
+```
+
+
+```{r include = FALSE}
+table(df$craig)
+```
+
+#### Comparing total ratings and review ratings
+
+In the graph below, I compared the avg. rating for the reviews I scraped and the total ratings from imdb. The movies are in timely order of airing, showing a declining trend for both categories. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+df$film <- df$film %>% factor(levels = c("Casino_Royale","Quantum_Solace","Skyfall","Spectre","No_Time_to_Die"))
+
+df %>% group_by(film) %>% summarise(review_rating = round(mean(rating),1)) %>% add_column(total_rating = c(8.0, 6.6, 7.8, 6.8, 7.3)) %>% melt() %>%
+  mutate(variable=case_when(variable=="review_rating" ~ "Avg. rating of reviews written", variable=="total_rating" ~ "Avg. of all imdb ratings")) %>%
+  ggplot(aes(film, value)) +
+  geom_col(aes(fill=variable), position="dodge") + 
+  theme_bw() + 
+  xlab("Avg. rating") + 
+  ggtitle("Imdb rating of movies") + 
+  theme(legend.position="bottom", legend.direction = "vertical") + 
+  theme(legend.title= element_blank())
+```
+
+Key takeaways:
+
+- Written review ratings are more negative on avg. than the average of all ratings found on imdb. The difference is significant, from 0.8 to as high as 2.3. The difference between the average of all imdb ratings and the average of reviews written is the biggest for No Time to Die, the latest movie.
+- While the total imdb ratings slightly decline over time, the review ratings decline more rapidly
+
+
+
+#### Extracting reviews that mention Craig
+
+Lets split the written reviews I scraped into two groups: those that mention and those that do not mention Craig. 
+
+Craig is geenrally mentioned in more than 50% of the reviews. 
+
+It is also interesting to see that for Skyfall, the first Craig move, Craig is mentioned in 1500 reviews and not mentioned in only 500 reviews. Looking at the ratings per group split in the graph below for Skyfall, we can see that those who mentioned Craig gave a rating which is almost as high as the overall movie rating, while those that did not mention Craig gave a much lowe rating score. This is true for all movies: Ratings are the highest for the movie itself, followed by ratings for reviews that mention Craig, followed by ratigns of reviews that do not metnion him.
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+p1 <- df  %>% mutate(craig=case_when(craig==TRUE ~ "Avg. rating of reviews written - Craig mentioned", craig==FALSE ~ "Avg. rating of reviews written - Craig not mentioned")) %>% 
+  ggplot(aes(film, fill=craig)) + geom_bar(stat="count", position = "dodge") +
+  theme(legend.position="bottom") +
+  theme_bw() +
+  ggtitle("Number of ratings") +
+  theme(legend.position="bottom", legend.direction = "vertical") + 
+  theme(legend.title= element_blank())
+```
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+
+temp1 <- df %>% group_by(film, craig) %>% summarise(avg_rating = mean(rating)) %>% ungroup
+temp1 <- temp1 %>% ungroup() %>% mutate(craig=case_when(craig==TRUE ~ "Avg. rating of reviews written - Craig mentioned", craig==FALSE ~ "Avg. rating of reviews written - Craig not mentioned")) %>% 
+  add_row(film="Casino_Royale", craig="Avg. of all imdb ratings", avg_rating=8.0) %>%
+  add_row(film="Quantum_Solace", craig="Avg. of all imdb ratings", avg_rating=6.6) %>%
+  add_row(film="Skyfall", craig="Avg. of all imdb ratings", avg_rating=7.8) %>%
+  add_row(film="Spectre", craig="Avg. of all imdb ratings", avg_rating=6.8) %>%
+  add_row(film="No_Time_to_Die", craig="Avg. of all imdb ratings", avg_rating=7.3)
+temp1$film <- temp1$film %>% factor(levels = c("Casino_Royale","Quantum_Solace","Skyfall","Spectre","No_Time_to_Die")) 
+
+p2 <- temp1 %>% ggplot(aes(film,avg_rating)) + 
+  geom_col(aes(fill=craig), position="dodge") + theme(legend.position="bottom") + theme_bw()  +
+  ggtitle("Avg. rating per group") + 
+  theme(legend.position="bottom", legend.direction = "vertical") +
+  theme(legend.title= element_blank())
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, fig.height=10}
+library(ggpubr)
+ggarrange(p1, p2, ncol = 1, nrow = 2)
+```
+
+
+Summary of key takeaways:
+
+- Daniel Craig is mentioned in the majority of reviews for all movies (except for No Time to Die where it is 50-50%), and reviews that mention him have a lower rating than the film, so we could say that he was the primary target of most negative comments. However, those who posted negative comments and did not mention Craig were even more negative about the film itself than about Daniel Craig
+- Ratings on reviews that mention Craig are worse in all cases than the rating of the movie itself on imdb ("Avg. of all imdb ratings"), but ratings that do not mention craig are even worse. 
+- First Bond movie (Casino Royale) had good ratings, and Daniel Craig was mentioned in most reviews (as a new debut Bond actor) and received almost as good ratings as the movie did
+- The last James Bond movie, Craig is only mentioned in c.50% of the reviews. The gap is the biggest here between the imdb total rating,  the review ratings that mention Craig, and the reviews that do not mention Craig
+
+
+Conclusions from the above facts:
+
+- Daniel Craig was only partly the reason when a Bond movie was rated badly (below 7), the movie itself had many harsh critiques. Most of the reviews with ratings below the imdb rating do mention Craig, however, those that do not mention him are less numerous but have an even lower average rating
+
+## Sentiment analysis
+
+Not that we have an overall understanding, lets use sentiment analysis methods to further deepdive into the topic. 
+
+## Analysis 1: Adjective frequency analysis
+
+I analyzed the frequency of key words (adjectives only). I did the exercise once for all reviews that do not contain Daniel Craig, and once for reviews that mention Craig. I removed stopwords, filtered the words to adjectives only using part_of_speech library, deleted some unneeded words to fine tune in the end, and determined the sentiment of the adjectives using bing library, and plotted occurrence counts on a graph.
+
+The analysis for all reviews showed that word "bad" is the most frequent word. However, I will need to do a bigram analysis in addition to deal with such negating words. The general takeaway from this graph is that from the 20 most frequent adjectives, 7 are negative and 14 are positive.
+
+Comparing the two graphs, we can see that those reviews that do not mention Craig have much more negative adjectives among the top25 frequent adjectives, 15 vs. 8. That is almost double the amount. The number of word counts is higher for reviews that mention Craig, but this is due to having much more reviews in this group.
+
+```{r NO craig reviews, include = FALSE}
+# unnest
+tidy_df <- df %>% filter(craig==FALSE) %>% 
+  unnest_tokens(word, review)
+
+# remove stopwords
+data(stop_words)
+tidy_df <- tidy_df %>%
+  anti_join(stop_words) 
+
+# filter to adjectives only
+adjectives <- filter(parts_of_speech, pos=="Adjective") %>%
+  pull(word)
+words_to_keep <- data_frame(word = adjectives)
+
+# get rid of not needed ones
+words_to_ignore <- data_frame(word = c("hard"))
+
+tidy_df <- tidy_df %>%
+    anti_join(words_to_ignore, by = "word")
+
+tidy_df <- tidy_df %>%
+  inner_join(words_to_keep) 
+
+tidy_df <- tidy_df %>%
+  left_join(get_sentiments("bing")) 
+
+```
+
+```{r all reviews plot, echo = FALSE, message=FALSE, warning=FALSE}
+tidy_df %>%
+  left_join(get_sentiments("bing")) %>%
+  drop_na() %>% 
+  count(word, sentiment, sort = TRUE) %>%
+  head(25) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) + geom_col(aes( fill=sentiment)) + xlab(NULL) + coord_flip() + theme_bw() +
+  ggtitle("Word frequency and sentiment for reviews NOT mentioning Craig") + 
+  theme(legend.position="bottom", legend.direction = "vertical") + 
+  theme(legend.title= element_blank()) 
+```
+
+
+```{r craig reviews, include = FALSE}
+# unnest
+tidy_df <- df %>% filter(craig==TRUE) %>% 
+  unnest_tokens(word, review)
+
+# remove stopwords
+data(stop_words)
+tidy_df <- tidy_df %>%
+  anti_join(stop_words) 
+
+# filter to adjectives only
+adjectives <- filter(parts_of_speech, pos=="Adjective") %>%
+  pull(word)
+words_to_keep <- data_frame(word = adjectives)
+
+# get rid of not needed ones
+words_to_ignore <- data_frame(word = c("hard"))
+
+tidy_df <- tidy_df %>%
+    anti_join(words_to_ignore, by = "word")
+
+tidy_df <- tidy_df %>%
+  inner_join(words_to_keep) 
+
+tidy_df <- tidy_df %>%
+  left_join(get_sentiments("bing")) 
+
+```
+
+```{r craig reviews plot, message=FALSE, warning=FALSE, echo=FALSE, fig.width=8}
+tidy_df %>%
+  left_join(get_sentiments("bing")) %>%
+  drop_na() %>% 
+  count(word, sentiment, sort = TRUE) %>%
+  head(25) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) + geom_col(aes( fill=sentiment)) + xlab(NULL) + coord_flip() + theme_bw() +
+  ggtitle("Word frequency and sentiment for reviews mentioning Craig") + 
+  theme(legend.position="bottom", legend.direction = "vertical") + 
+  theme(legend.title= element_blank()) 
+```
+
+Checking the bigrams could help draw more conclusions for the adjectives counts above. We can see that "bad" happens to be with "bad guys" or "bad guy" in most cases. Zooming in for bigrams that contain the word bad, we can see that indeed these are the vast majority, c.35%. Itis interesting to see that bad movie got much more counts than bad bond and bad actor. My conclusion looking at bjgrams is that Craig is not a top success, but poeple who gave bad reviews gave it msotly due tothe movie itself and just partly because of Craig's acting.
+
+```{r include = FALSE}
+
+# unnest
+tidy_df <- df %>% 
+  unnest_tokens(bigram, review, token = "ngrams", n = 2)
+
+# separating
+tidy_df <- tidy_df %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+# remove stopwords
+tidy_df <- tidy_df %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+# get rid of not needed ones
+words_to_ignore <- data_frame(word = c("hard", "eva","casino","royale"))
+tidy_df <- tidy_df %>%
+  filter(!word1 %in% words_to_ignore$word) %>%
+  filter(!word2 %in% words_to_ignore$word)
+
+# filter to adjectives only
+adjectives <- filter(parts_of_speech, pos=="Adjective") %>%
+  pull(word)
+words_to_keep <- data_frame(word = adjectives)
+tidy_df <- tidy_df %>%
+  filter(word1 %in% words_to_keep$word | word2 %in% words_to_keep$word )
+
+# join
+tidy_df$bigram <- paste(tidy_df$word1, tidy_df$word2, sep=" ")
+
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+tidy_df %>%
+  drop_na() %>% 
+  count(bigram, sort = TRUE) %>%
+  head(25) %>%
+  mutate(bigram = reorder(bigram, n)) %>%
+  ggplot(aes(bigram, n)) + geom_col() + xlab(NULL) + coord_flip() +
+  theme_bw() +
+  ggtitle("Bigrams") + 
+  theme(legend.position="bottom", legend.direction = "vertical") + 
+  theme_bw()
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+tidy_df %>%
+  drop_na() %>% 
+  count(bigram, sort = TRUE) %>%
+  filter(grepl('bad', bigram)) %>% 
+  head(25) %>%
+  mutate(bigram = reorder(bigram, n)) %>%
+  ggplot(aes(bigram, n)) + geom_col() + xlab(NULL) + coord_flip() +
+  theme_bw() +
+  ggtitle("Bigrams that contain the word bad") + 
+  theme(legend.position="bottom", legend.direction = "vertical") + 
+  theme_bw()
+
+```
+
+
+## Analysis 2: Adjective sentiment in sentences
+
+In this section, I will focus on the written reviews only, and on sentiments. I filter the tidy dataset to adjectives again and use 2 lexicons, bing and nrc to evaluate.
+
+I will use the following 3 grouped of reviews:
+
+- Reviews that do not mention Daniel Craig at all (Craig_not_mentioned)
+- Sentences that contain Daniel Craig from reviews that mention him (Craig_mentioned_Sentences_with_Craig)
+- Sentences that do not contain Daniel Craig from reviews that mention him (Craig_mentioned_Sentences_without_Craig)
+
+#### Bing lexicon
+
+First I used the Bing lexicon to analyse the adjectives. 
+
+```{r Sentences with Daniel Craig, include=FALSE}
+# unnest
+tidy_df <- df %>%
+  unnest_tokens(word, craig_sentences)
+
+# remove stopwords
+data(stop_words)
+tidy_df <- tidy_df %>%
+  anti_join(stop_words) 
+
+# filter to adjectives only
+adjectives <- filter(parts_of_speech, pos=="Adjective") %>%
+  pull(word)
+words_to_keep <- data_frame(word = adjectives)
+tidy_df <- tidy_df %>%
+  semi_join(words_to_keep) 
+
+# sentiment with nrc
+nrcjoy <- get_sentiments("bing")
+tidy_df <- tidy_df %>%
+  inner_join(nrcjoy) 
+
+# save to df
+Craig_mentioned_Sentences_with_Craig <- tidy_df %>% group_by(sentiment) %>% 
+  count(sentiment, sort =TRUE)
+
+colnames(Craig_mentioned_Sentences_with_Craig) <- c("sentiment", "Craig_mentioned_Sentences_with_Craig" )
+
+#Craig_mentioned_Sentences_with_Craig <- Craig_mentioned_Sentences_with_Craig %>% mutate(
+#  Craig_mentioned_Sentences_with_Craig = round((n / nrow(tidy_df))*100,0))
+
+```
+
+```{r sentences with no daniel craig, include=FALSE}
+# unnest
+tidy_df <- df %>%
+  unnest_tokens(word, not_craig_sentences)
+
+# remove stopwords
+data(stop_words)
+tidy_df <- tidy_df %>%
+  anti_join(stop_words) 
+
+# filter to adjectives only
+adjectives <- filter(parts_of_speech, pos=="Adjective") %>%
+  pull(word)
+words_to_keep <- data_frame(word = adjectives)
+tidy_df <- tidy_df %>%
+  semi_join(words_to_keep) 
+
+# sentiment with nrc
+nrcjoy <- get_sentiments("bing")
+tidy_df <- tidy_df %>%
+  inner_join(nrcjoy) 
+
+# save to df
+Craig_mentioned_Sentences_without_Craig <- tidy_df %>% group_by(sentiment) %>% 
+  count(sentiment, sort =TRUE)
+
+colnames(Craig_mentioned_Sentences_without_Craig) <- c("sentiment", "Craig_mentioned_Sentences_without_Craig" )
+
+#Craig_mentioned_Sentences_without_Craig <- Craig_mentioned_Sentences_without_Craig %>% mutate(
+#  Craig_mentioned_Sentences_without_Craig = round((n / nrow(tidy_df))*100,0))
+```
+ 
+```{r Reviews that do not mention Craig at all, include=FALSE}
+# unnest
+tidy_df <- df %>% filter(craig == FALSE) %>% 
+  unnest_tokens(word, review)
+
+# remove stopwords
+data(stop_words)
+tidy_df <- tidy_df %>%
+  anti_join(stop_words) 
+
+# filter to adjectives only
+adjectives <- filter(parts_of_speech, pos=="Adjective") %>%
+  pull(word)
+words_to_keep <- data_frame(word = adjectives)
+tidy_df <- tidy_df %>%
+  semi_join(words_to_keep) 
+
+# sentiment with nrc
+nrcjoy <- get_sentiments("bing")
+tidy_df <- tidy_df %>%
+  inner_join(nrcjoy) 
+
+# save to df
+Craig_not_mentioned <- tidy_df %>% group_by(sentiment) %>% 
+  count(sentiment, sort =TRUE)
+
+colnames(Craig_not_mentioned) <- c("sentiment", "Craig_not_mentioned" )
+
+#Craig_not_mentioned <- Craig_not_mentioned %>% mutate(
+#  Craig_not_mentioned = round((n / nrow(tidy_df))*100,0))
+```
+
+```{r summary, include=FALSE}
+df_frequence_1 <- merge(x=Craig_not_mentioned,
+                       y=Craig_mentioned_Sentences_without_Craig,
+                      by="sentiment")
+
+df_frequence_1 <- merge(x=df_frequence_1,
+                       y=Craig_mentioned_Sentences_with_Craig,
+                      by="sentiment")
+
+
+```
+
+Based on the graph, there is no difference in sentences where Craig is mentioned and sentences where Craig is not mentioned from reviews where Craig is mentioned. However, we can see that proportionally the number of negative sentiment adjectives is higher in sentences from reviews where Craig is not mentioned at all compared to sentences where he is mentioned directly. 
+
+```{r chart, echo = FALSE, message=FALSE, warning=FALSE, fig.width=10}
+p3 <- pivot_longer(df_frequence_1, !sentiment) %>% arrange(sentiment,value) %>% 
+  ggplot(aes(name, value)) + geom_col(aes(fill=sentiment), position="dodge") +
+  theme_bw() + 
+  labs(y = "Sentiment count", x = "Review group") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
+  ggtitle("Sentiment analysis with Bing") + 
+  theme_bw() +
+  theme(legend.position="bottom", legend.direction = "vertical") 
+
+p3
+```
+
+Using the narc lexicon
+
+```{r Sentences with Daniel Craig 2, include=FALSE}
+# unnest
+tidy_df <- df %>%
+  unnest_tokens(word, craig_sentences)
+
+# remove stopwords
+data(stop_words)
+tidy_df <- tidy_df %>%
+  anti_join(stop_words) 
+
+# filter to adjectives only
+adjectives <- filter(parts_of_speech, pos=="Adjective") %>%
+  pull(word)
+words_to_keep <- data_frame(word = adjectives)
+tidy_df <- tidy_df %>%
+  semi_join(words_to_keep) 
+
+# sentiment with nrc
+nrcjoy <- get_sentiments("nrc")
+tidy_df <- tidy_df %>%
+  inner_join(nrcjoy) 
+
+# save to df
+Craig_mentioned_Sentences_with_Craig <- tidy_df %>% group_by(sentiment) %>% 
+  count(sentiment, sort =TRUE)
+
+colnames(Craig_mentioned_Sentences_with_Craig) <- c("sentiment", "Craig_mentioned_Sentences_with_Craig" )
+
+#Craig_mentioned_Sentences_with_Craig <- Craig_mentioned_Sentences_with_Craig %>% mutate(
+#  Craig_mentioned_Sentences_with_Craig = round((n / nrow(tidy_df))*100,0))
+
+```
+
+```{r sentences with no daniel craig 2, include=FALSE}
+# unnest
+tidy_df <- df %>%
+  unnest_tokens(word, not_craig_sentences)
+
+# remove stopwords
+data(stop_words)
+tidy_df <- tidy_df %>%
+  anti_join(stop_words) 
+
+# filter to adjectives only
+adjectives <- filter(parts_of_speech, pos=="Adjective") %>%
+  pull(word)
+words_to_keep <- data_frame(word = adjectives)
+tidy_df <- tidy_df %>%
+  semi_join(words_to_keep) 
+
+# sentiment with nrc
+nrcjoy <- get_sentiments("nrc")
+tidy_df <- tidy_df %>%
+  inner_join(nrcjoy) 
+
+# save to df
+Craig_mentioned_Sentences_without_Craig <- tidy_df %>% group_by(sentiment) %>% 
+  count(sentiment, sort =TRUE)
+
+colnames(Craig_mentioned_Sentences_without_Craig) <- c("sentiment", "Craig_mentioned_Sentences_without_Craig" )
+
+#Craig_mentioned_Sentences_without_Craig <- Craig_mentioned_Sentences_without_Craig %>% mutate(
+#  Craig_mentioned_Sentences_without_Craig = round((n / nrow(tidy_df))*100,0))
+```
+
+```{r reviews that do not mention Craig at all 2, include=FALSE}
+# unnest
+tidy_df <- df %>% filter(craig == FALSE) %>% 
+  unnest_tokens(word, review)
+
+# remove stopwords
+data(stop_words)
+tidy_df <- tidy_df %>%
+  anti_join(stop_words) 
+
+# filter to adjectives only
+adjectives <- filter(parts_of_speech, pos=="Adjective") %>%
+  pull(word)
+words_to_keep <- data_frame(word = adjectives)
+tidy_df <- tidy_df %>%
+  semi_join(words_to_keep) 
+
+# sentiment with nrc
+nrcjoy <- get_sentiments("nrc")
+tidy_df <- tidy_df %>%
+  inner_join(nrcjoy) 
+
+# save to df
+Craig_not_mentioned <- tidy_df %>% group_by(sentiment) %>% 
+  count(sentiment, sort =TRUE)
+
+colnames(Craig_not_mentioned) <- c("sentiment", "Craig_not_mentioned" )
+
+#Craig_not_mentioned <- Craig_not_mentioned %>% mutate(
+#  Craig_not_mentioned = round((n / nrow(tidy_df))*100,0))
+```
+
+```{r Summarizing results 2, include=FALSE}
+df_frequence_2 <- merge(x=Craig_not_mentioned,
+                       y=Craig_mentioned_Sentences_without_Craig,
+                      by="sentiment")
+
+df_frequence_2 <- merge(x=df_frequence_2,
+                       y=Craig_mentioned_Sentences_with_Craig,
+                      by="sentiment")
+
+df_frequence_2$Craig_not_mentioned <- df_frequence_2$Craig_not_mentioned / sum(df_frequence_2$Craig_not_mentioned)
+df_frequence_2$Craig_mentioned_Sentences_with_Craig <- df_frequence_2$Craig_mentioned_Sentences_with_Craig / sum(df_frequence_2$Craig_mentioned_Sentences_with_Craig)
+df_frequence_2$Craig_mentioned_Sentences_without_Craig <- df_frequence_2$Craig_mentioned_Sentences_without_Craig / sum(df_frequence_2$Craig_mentioned_Sentences_without_Craig)
+
+df_frequence_2
+```
+For the nrc lexicon results, I calculated relative frequency per the three groups, allowing a relative comparison per sentiment across the 3 groups. E.g. in reviews where Craig was not mentioned, anger has a  c. 9.5% relative frequency, while for sentences that mention Craig thi is only c.7.5%.
+The nrc lexicon does not really change the overall picture we saw above: For negative sentiments such as "fear", "anger", "negative", "sadness" have the highest relative frequency for reviews that do not mention Craig, while positive sentiments such as "joy", "anticipation","positive" or"trust" is the highest for sentences where Craig is mentioned.
+
+This reassures us of the conclusion we had for the Exploratory Analysis and for Analysis 1: the films themselves was the cause of most negative sentiments, Craig's acting causing negative review is only secondary,.
+
+```{r chart 2, echo = FALSE, message=FALSE, warning=FALSE , fig.width=10}
+p4 <- pivot_longer(df_frequence_2, !sentiment) %>% arrange(value) %>%
+  ggplot(aes(sentiment, value)) + 
+  geom_col(aes(fill=name), position = "dodge") + 
+  theme_bw() +
+  labs(y = "Sentiment relative frequency within the 3 groups", x = "Sentiment") + 
+  ggtitle("Sentiment analysis with NRC") + 
+  theme_bw() + 
+  theme(legend.position="bottom", legend.direction = "vertical") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+
+p4
+```
+
+## Analysis 3: Sentiment analysis reviews that include Craig
+
+For analysis 3 I checked the sentiment of hole reviews as one unit. I calculated the sentiment ratio of each review that mention Craig, using the nrc lexicon, and grouped the sentiments into 3 custom sentiment groups, negative, positive and neutral. I defined the "negative" sentiments as the anger, disgust, fear, negative and sadness sentiment groups within nrc, and anticipation, joy, positive as "positive". I grouped into "other" the fear, surprise and trust categories.
+
+```{r, include=FALSE}
+tidy_df <- df %>% 
+  unnest_tokens(word, review)
+
+# get nrc sentiments
+tidy_df <- tidy_df %>% inner_join(get_sentiments("nrc"))
+
+# remove stopwords
+data(stop_words)
+tidy_df <- tidy_df %>%
+  anti_join(stop_words) 
+
+negative <- c("anger","disgust", "negative", "sadness")
+positive <- c("anticipation","joy", "positive")
+
+tidy_df <- tidy_df %>% mutate(sentiment_group =
+                                case_when(
+                                  sentiment %in% negative ~ "negative",
+                                  sentiment %in% positive ~ "positive",
+                                  TRUE ~ "other"
+                                ))
+
+library(janitor)
+tidy_df <- tidy_df %>% select(c("X","sentiment_group", "craig")) %>% 
+   pivot_wider(names_from = sentiment_group, values_from = sentiment_group,
+        values_fn = length, values_fill = 0) %>% 
+   adorn_totals('col')  %>%
+  mutate(negative_ratio = negative/Total) %>%
+  mutate(positive_ratio = positive/Total) %>% 
+  filter(negative_ratio != 0 ) %>% 
+  filter(positive_ratio != 0 ) %>% 
+  filter(Total > 10 )
+
+
+```
+
+The picture below is very balanced. For reviews where Craig is mentioned (True) the bulk of the data points are within the 0-25-0.5 range for both the negative and the positive sentiments, tilted slightly to the positive direction. For reviews that do not mention Craig (FALSE), the points are slightly tilted to the negative axis,
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+tidy_df %>%  ggplot(aes(x=positive_ratio, y=negative_ratio)) + geom_point(aes(color=craig), alpha=0.1, size=1) + theme_bw() + facet_wrap(~craig)
+```
+Summing up the above seen scatterplot, the reviews that mention Craig are slightly more positive than the reviews that do not mentiond him. This reassures the conclusion from Analysis 1 & 2.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+tidy_df %>% group_by(craig) %>% summarise(avg_positive_ratio=sum(positive_ratio), avg_negative_ratio=sum(negative_ratio))  %>% melt() %>%
+  ggplot(aes(craig, value)) + geom_col(aes(fill=variable), position = "dodge") + theme_bw()
+```
+
+## APPENDIX: Analysis 4: Tf-idf analysis of reviews that include Craig vs reviews that do not
+
+Finally I did a ft-idf analysis, however even after filtering names and other not needed words, I did not get a conclusive result. Thus I placed it in the appendix, as it is still interesting to see.
+
+```{r, include=FALSE}
+# create craig - film id
+tidy_df <- df
+tidy_df$film_craig_id = str_c(tidy_df$film, "-",tidy_df$craig)
+
+# create df
+tidy_df <- tidy_df %>% 
+  unnest_tokens(word, review) %>% 
+  count(film_craig_id, word, sort = TRUE) %>%
+  ungroup()
+
+# remove possessives and other non letter charaters
+tidy_df <- tidy_df %>%
+  mutate(word = str_extract(word, "[a-z']+")) %>%
+  filter(! str_detect(word, "'"))
+
+total_words <- tidy_df %>% 
+  group_by(film_craig_id) %>% 
+  summarize(total = sum(n))
+
+tidy_df <- left_join(tidy_df, total_words)
+
+# filter out names
+extra_names <- data.frame(word=c("malek","armas","rami","safin","ana","waltz","camille","seydoux","lashanna","silva","belucci","bautista","madeleine","kurylenko","amalric","bardem", "paloma","lynch","nomi","hinx","mathieu","fukunaga","craig","swann","marlohe","oberhauser","joji","forster","bolivia", "bellucci", "naomie","fiennes","lashana","istanbul","finney","christoph","léa","whishaw","0096","lyutsifer","zimmer","caterina","gianni","medrano","boyle","tosca","pallo","chigurh","severine","sciarra","hoyte","bolivian","waller","hoytema","spectre","arteron","belluci","komodo","nanobots"))
+
+names <- read_csv("https://raw.githubusercontent.com/hadley/data-baby-names/master/baby-names.csv") %>% select(word=name) %>% mutate(word=tolower(word))
+countries <- read_csv("https://raw.githubusercontent.com/datasets/country-list/master/data.csv") %>% select(word=Name) %>% mutate(word=tolower(word))
+cities <- read_csv("https://raw.githubusercontent.com/datasets/world-cities/master/data/world-cities.csv")  %>% select(word=name) %>% mutate(word=tolower(word))
+
+words_to_exclude = rbind(names, countries, cities, extra_names)
+
+
+# do tf-idf calc
+tidy_df <- tidy_df %>%
+  bind_tf_idf(word, film_craig_id, n)
+
+tidy_df <- tidy_df %>%
+  anti_join(words_to_exclude)
+
+
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=40, fig.width=25}
+tidy_df %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>% 
+  group_by(film_craig_id) %>% 
+  top_n(10) %>% 
+  ungroup %>%
+  ggplot(aes(word, tf_idf, fill = film_craig_id)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~film_craig_id, ncol = 2, scales = "free") +
+  coord_flip() + theme(text = element_text(size = 20))  
+```
+
+

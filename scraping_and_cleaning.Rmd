@@ -1,0 +1,210 @@
+---
+title: "Analysis of Daniel Cragin review negativity"
+author: "Gyebnar Daniel"
+date: '2022 04 29 '
+output: html_document
+---
+
+## Scraping
+
+### Importing libraries
+
+```{r}
+rm(list=ls())
+```
+
+
+```{r}
+library(rvest)
+library(data.table)
+library(xml2)
+library(tidyverse)
+library(stringr)
+
+```
+
+### Creating the function
+```{r}
+get_one_page <- function(url) {
+  
+  link <- read_html(url)
+  
+  #getting the details for each movie
+  detail <- link %>% html_nodes(".lister-item-content")
+  
+  #getting review
+  review <- c()
+  for (i in detail){
+    review <- c(review, i %>% html_nodes(".show-more__control") %>% html_text())
+  }
+  
+  #getting ratings
+  rating <- c()
+  for (i in detail){
+    if(length(i %>% html_nodes(".rating-other-user-rating")) == 0){
+      rating <- c(rating,"")
+    }else{
+      rating <- c(rating, i %>% html_nodes(".rating-other-user-rating") %>% html_text)
+    }
+  }
+  
+  return(data.frame("review"=review, "rating"=rating))
+  
+}
+```
+
+### Casino Royale
+```{r}
+link <- paste(read_html("imdb_ratings/Casino_Royale.html"), collapse="\n")
+list_of_dfs <- lapply(link, get_one_page)
+df_casino_royale <- rbindlist(list_of_dfs)
+df_casino_royale <- filter(df_casino_royale, df_casino_royale$rating != "")
+rm(list_of_dfs)
+df_casino_royale <- sample_n(df_casino_royale, 1000)
+df_casino_royale <- df_casino_royale %>% mutate(film="Casino_Royale")
+```
+
+### No time to die
+```{r}
+link <- paste(read_html("imdb_ratings/No_Time_to_Die.html"), collapse="\n")
+list_of_dfs <- lapply(link, get_one_page)
+df_no_time <- rbindlist(list_of_dfs)
+df_no_time <- filter(df_no_time, df_no_time$rating != "")
+rm(list_of_dfs)
+df_no_time <- sample_n(df_no_time, 1000)
+df_no_time <- df_no_time %>% mutate(film="No_Time_to_Die")
+```
+
+### Quantum of Solace
+```{r}
+link <- paste(read_html("imdb_ratings/Quantum_of_solace.html"), collapse="\n")
+list_of_dfs <- lapply(link, get_one_page)
+df_quantum <- rbindlist(list_of_dfs)
+df_quantum <- filter(df_quantum, df_quantum$rating != "")
+rm(list_of_dfs)
+df_quantum <- sample_n(df_quantum, 1000)
+df_quantum <- df_quantum %>% mutate(film="Quantum_Solace")
+```
+
+### Skyfall
+```{r}
+link <- paste(read_html("imdb_ratings/Skyfall.html"), collapse="\n")
+list_of_dfs <- lapply(link, get_one_page)
+df_skyfall <- rbindlist(list_of_dfs)
+df_skyfall <- filter(df_skyfall, df_skyfall$rating != "")
+rm(list_of_dfs)
+df_skyfall <- sample_n(df_skyfall, 1000)
+df_skyfall <- df_skyfall %>% mutate(film="Skyfall")
+```
+
+### Spectre
+```{r}
+link <- paste(read_html("imdb_ratings/Spectre.html"), collapse="\n")
+list_of_dfs <- lapply(link, get_one_page)
+df_spectre <- rbindlist(list_of_dfs)
+df_spectre <- filter(df_spectre, df_spectre$rating != "")
+rm(list_of_dfs)
+df_spectre <- sample_n(df_spectre, 1000)
+df_spectre <- df_spectre %>% mutate(film="Spectre")
+```
+
+### Merging
+```{r}
+df_raw <- rbind(df_casino_royale,
+            df_no_time,
+            df_quantum,
+            df_skyfall,
+            df_spectre)
+write.csv(df_raw, file = "./df_raw.csv")
+
+```
+
+## Cleaning & engineering 
+
+```{r}
+rm(list=ls())
+```
+
+
+```{r}
+df_raw <- read.csv("./df_raw.csv")
+```
+
+```{r}
+library(rvest)
+library(data.table)
+library(xml2)
+library(tidyverse)
+library(stringr)
+```
+
+
+```{r}
+df_raw$rating <- sub("/.*", "", df_raw$rating)
+```
+
+```{r}
+df_raw <- df_raw %>% mutate(craig = 
+  case_when(
+    grepl("Daniel|Craig",review) ~ TRUE,
+    TRUE ~ FALSE
+  )
+)
+```
+
+extracting sentences with Daniel Craig mentioned in it
+```{r}
+craig_extracter_999 <- function(text){
+  craig_sentence <- c()
+  for ( i in strsplit(text, split="\\.|!")[[1]] ){
+  if(sum(sapply(c("Daniel","Craig","He"), grepl, i)) > 0){
+    craig_sentence <- c(craig_sentence,i)
+  }
+  craig_sentence <- paste(craig_sentence, collapse = " ")
+}
+craig_sentence
+}
+
+```
+
+
+```{r}
+df_raw <- df_raw %>% mutate(craig_sentences = 
+                case_when(
+                  df_raw$craig==TRUE ~ unlist(lapply(df_raw$review, craig_extracter_999)),
+                TRUE ~ ""))
+```
+
+extracting sentences with no Daniel Craig mentioned in it
+```{r}
+not_craig_extracter_999 <- function(text){
+  not_craig_sentence <- c()
+  for ( i in strsplit(text, split="\\.|!")[[1]] ){
+  if(sum(sapply(c("Daniel","Craig","He"), grepl, i)) == 0){
+    not_craig_sentence <- c(not_craig_sentence,i)
+  }
+  not_craig_sentence <- paste(not_craig_sentence, collapse = " ")
+}
+not_craig_sentence
+}
+
+```
+
+
+```{r}
+df_raw <- df_raw %>% mutate(not_craig_sentences = 
+                case_when(
+                  df_raw$craig==TRUE ~ unlist(lapply(df_raw$review, not_craig_extracter_999)),
+                TRUE ~ ""))
+```
+
+create factor from film variable with levels
+```{r}
+df_raw$film <- df_raw$film %>% factor(levels = c("Casino_Royale","Quantum_Solace","Skyfall","Spectre","No_Time_to_Die"))
+```
+
+
+```{r}
+write.csv(df_raw, "./df_clean.csv")
+```
+

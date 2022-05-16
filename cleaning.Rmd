@@ -1,0 +1,96 @@
+---
+title: "Analysis of Daniel Cragin review negativity"
+author: "Gyebnar Daniel"
+date: '2022 04 29 '
+output: html_document
+---
+
+## Cleaning & engineering 
+
+```{r}
+rm(list=ls())
+```
+
+
+```{r}
+df_raw <- read.csv("./df_raw.csv")
+```
+
+```{r}
+library(rvest)
+library(data.table)
+library(xml2)
+library(tidyverse)
+library(stringr)
+```
+
+
+```{r}
+df_raw$rating <- sub("/.*", "", df_raw$rating)
+```
+
+```{r}
+df_raw <- df_raw %>% mutate(craig = 
+  case_when(
+    grepl("Daniel|Craig",review) ~ TRUE,
+    TRUE ~ FALSE
+  )
+)
+```
+
+extracting sentences with Daniel Craig mentioned in it
+```{r}
+craig_extracter_999 <- function(text){
+  craig_sentence <- c()
+  for ( i in strsplit(text, split="\\.|!")[[1]] ){
+  if(sum(sapply(c("Daniel","Craig","He"), grepl, i)) > 0){
+    craig_sentence <- c(craig_sentence,i)
+  }
+  craig_sentence <- paste(craig_sentence, collapse = " ")
+}
+craig_sentence
+}
+
+```
+
+
+```{r}
+df_raw <- df_raw %>% mutate(craig_sentences = 
+                case_when(
+                  df_raw$craig==TRUE ~ unlist(lapply(df_raw$review, craig_extracter_999)),
+                TRUE ~ ""))
+```
+
+extracting sentences with no Daniel Craig mentioned in it
+```{r}
+not_craig_extracter_999 <- function(text){
+  not_craig_sentence <- c()
+  for ( i in strsplit(text, split="\\.|!")[[1]] ){
+  if(sum(sapply(c("Daniel","Craig","He"), grepl, i)) == 0){
+    not_craig_sentence <- c(not_craig_sentence,i)
+  }
+  not_craig_sentence <- paste(not_craig_sentence, collapse = " ")
+}
+not_craig_sentence
+}
+
+```
+
+
+```{r}
+df_raw <- df_raw %>% mutate(not_craig_sentences = 
+                case_when(
+                  df_raw$craig==TRUE ~ unlist(lapply(df_raw$review, not_craig_extracter_999)),
+                TRUE ~ ""))
+```
+
+create factor from film variable with levels
+```{r}
+df_raw$film <- df_raw$film %>% factor(levels = c("Casino_Royale","Quantum_Solace","Skyfall","Spectre","No_Time_to_Die"))
+```
+
+
+```{r}
+write.csv(df_raw, "./df_clean.csv")
+```
+
